@@ -1,0 +1,75 @@
+os.pullEvent = os.pullEventRaw
+
+local w,h = term.getSize()
+
+--Print Centered Function
+function printCentered (y,s)
+  local x = math.floor((w - string.len(s)) / 2)
+  term.setCursorPos(x,y)
+  term.clearLine()
+  term.write(s)
+end
+
+--Draw Menu Function
+
+local nOption = 1
+
+local function drawMenu()
+  term.clear()
+  term.setCursorPos(1,1)
+  term.write("Uninstall BinaryOS")
+  
+  term.setCursorPos(w - 11,1)
+  if nOption == 1 then
+    term.write("Confirm")
+  elseif nOption == 2 then
+    term.write("Back")
+  else
+  end
+end
+
+--GUI
+
+term.clear()
+local function drawFrontend()
+  printCentered(math.floor(h / 2) - 3, "")
+  printCentered(math.floor(h / 2) - 2, "Are you sure you wish to UNINSTALL?")
+  printCentered(math.floor(h / 2) - 1, "")
+  printCentered(math.floor(h / 2) + 0, ((nOption == 1) and "[ Confirm ]") or "Confirm")
+  printCentered(math.floor(h / 2) + 1, ((nOption == 2) and "[ Back    ]") or "Back   ")
+end
+
+--Display
+
+drawMenu()
+drawFrontend()
+
+while true do
+  local e,p = os.pullEvent()
+  if e == "key" then
+    local key = p
+    if key == 17 or key == 200 then
+      if nOption > 1 then
+        nOption = nOption - 1
+        drawMenu()
+        drawFrontend()
+      end
+    elseif key == 31 or key == 208 then
+      if nOption < 2 then
+        nOption = nOption + 1
+        drawMenu()
+        drawFrontend()
+      end
+    elseif key == 28 then
+      break
+    end
+  end
+end
+term.clear()
+
+--Conditions
+if nOption == 1 then
+  shell.run("BinaryOS/uninstall")
+else
+  shell.run("BinaryOS/settings")
+end
