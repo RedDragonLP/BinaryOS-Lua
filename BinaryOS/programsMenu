@@ -24,13 +24,14 @@ local function drawMenu()
   if nOption == 1 then
     term.write("EChat")
   elseif nOption == 2 then
-    term.write("FTP Server")
+    term.write("KristWallet")
   elseif nOption == 3 then
-    term.write("FTP Client")
+    term.write("Place")
   elseif nOption == 4 then
     term.write("Back")
   else
   end
+  term.setCursorPos(1,1)
 end
 
 --GUI
@@ -40,10 +41,10 @@ local function drawFrontend()
   printCentered(math.floor(h / 2) - 3, "")
   printCentered(math.floor(h / 2) - 2, "Programs")
   printCentered(math.floor(h / 2) - 1, "")
-  printCentered(math.floor(h / 2) + 0, ((nOption == 1) and "[ EChat      ]") or "EChat     ")
-  printCentered(math.floor(h / 2) + 1, ((nOption == 2) and "[ FTP Server ]") or "FTP Server")
-  printCentered(math.floor(h / 2) + 2, ((nOption == 3) and "[ FTP Client ]") or "FTP Client")
-  printCentered(math.floor(h / 2) + 3, ((nOption == 4) and "[ Back       ]") or "Back      ")
+  printCentered(math.floor(h / 2) + 0, ((nOption == 1) and "[ EChat       ]") or "EChat      ")
+  printCentered(math.floor(h / 2) + 1, ((nOption == 2) and "[ KristWallet ]") or "KristWallet")
+  printCentered(math.floor(h / 2) + 2, ((nOption == 3) and "[ Place       ]") or "Place      ")
+  printCentered(math.floor(h / 2) + 3, ((nOption == 4) and "[ Back        ]") or "Back       ")
 end
 
 --Display
@@ -82,9 +83,11 @@ if nOption == 1 then
   local cr = read()
   shell.run("/BinaryOS/programs/echat/echat", cr)
 elseif nOption == 2 then
-  shell.run("/BinaryOS/programs/ftp_server")
+  term.clear()
+  term.setCursorPos(1,1)
+  shell.run("/BinaryOS/programs/KWallet/KWallet")
 elseif nOption == 3 then
-  shell.run("/BinaryOS/programs/ftp_client")
+  shell.run("/BinaryOS/programsMenu")
 else
   shell.run("BinaryOS/menu")
 end
