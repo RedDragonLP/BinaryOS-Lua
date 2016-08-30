@@ -1,0 +1,1371 @@
+local path   = "/BinaryOS/libs/cryptLib"
+local libs   = {}
+local init   = {}
+
+local aes    = {}
+local base64 = {}
+local dhe    = {}
+local rc4    = {}
+local sha    = {}
+local xor    = {}
+
+local utils  = {}
+
+function libs.aes()
+	init.generateTables()
+	return aes
+end
+
+function libs.base64()
+	return base64
+end
+
+function libs.dhe()
+	return dhe
+end
+
+function libs.rc4()
+	return rc4
+end
+
+function libs.sha256()
+	return sha
+end
+
+function libs.xor()
+	return xor
+end
+
+function libs.utils()
+	return utils
+end
+
+function libs.update()
+	http.request("https://dl.dropboxusercontent.com/u/37842828/mc/cc/lua/libs/cryptLib.lua")
+	while true do
+		local event, p1, p2 = os.pullEvent()
+		if event == "http_success" then
+			local file = fs.open(path, "w")
+			file.write(p2.readAll())
+			file.close()
+			p2.close()
+			return true
+		elseif event == "http_failure" then
+			return false
+		end
+	end
+end
+
+local band = bit.band
+local bor = bit.bor
+local bxor = bit.bxor
+local blshift = bit.blshift
+local brshift = bit.brshift
+
+-- Metatables
+local byteArrayToString_mt = {
+	__tostring = function(a) return string.char(unpack(a)) end,
+	__eq = function(a,b)  end,
+}
+
+-- Utilities START ---
+
+function utils.toCharArray(str)
+	return setmetatable({str:byte(1,-1)}, byteArrayToString_mt)
+end
+
+function utils.strToHex(s, spacing)
+	local s = type(s) == "table" and {unpack(s)} or {tostring(s):byte(1,-1)}
+	return (("%02x"..(spacing or "")):rep(#s)):format(unpack(s))
+end
+
+function utils.assert(condition, err, level)
+	if not condition then
+		error(err, (level or 1)+1)
+	end
+end
+
+function utils.keygen(byte, nKeys)
+	utils.assert(type(byte) == "number", "bad argument #1: number expected, got "..type(byte), 2)
+
+	local keys = {}
+	nKeys = nKeys or 1
+	local tmp = {}
+	for i = 1, 16 do
+		tmp[#tmp+1] = math.random( 0x00, 0xFF )
+	end
+	local r = rc4.new(tmp)
+	for j = 1, nKeys do
+		keys[#keys+1] = r({("\0"):rep(byte):byte(1,-1)})
+	end
+	return unpack(keys)
+end
+
+function utils.isPrime(n)
+	local n = tonumber(n)
+	if not n or n <= 1 then return false
+	elseif n <= 3 then return true
+	elseif (n%2 == 0) or (n%3 == 0) then return false
+	else
+		local i = 5
+		while i*i <= n do
+			if (n%i == 0) or (n%(i+2) == 0) then
+				return false
+			end
+			i = i + 6
+		end
+		return true
+	end
+end
+
+function utils.toBits(n)
+--	utils.assert(n < 2^31-1, "Number too big", 2)
+	local o = {}
+	repeat
+		o[#o+1] = n%2
+		n = brshift(n, 1)
+	until n == 0
+	return o
+end
+
+function utils.fromBits(n)
+--	utils.assert(n < 2^31-1, "Number too big", 2)
+	local o = 0
+	for bit, value in ipairs(n) do
+		o = o + (value * 2^(bit-1))
+	end
+	return o
+end
+
+function utils.getBitLength(a)
+	return #utils.toBase(a, 2)
+end
+
+function utils.toBase(num, base)
+	local char = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.-:+=^!/*?&<>()[]{}@%$#"
+	local ret = ""
+	base = base or 36
+	while num ~= 0 do
+		local i = num % base
+		ret = char:sub(i+1,i+1) .. ret
+		num = math.floor(num/base)
+	end
+	return ret
+end
+
+function utils.split(s, p)
+	local t = {}
+	s:gsub("([^"..p.."]+)", function(v) t[#t + 1] = v end)
+	return t
+end
+
+function utils.clone(tabl)
+	local oType = type(tabl)
+	local copy = {}
+	if oType == "table" then
+		for oKey, oVal in next, tabl, nil do
+			copy[utils.clone(oKey)] = utils.clone(oVal)
+		end
+		setmetatable(copy, getmetatable(tabl))
+	else
+		copy = tabl
+	end
+	return copy
+end
+
+local luaKeywrds = {
+    [ "and" ] = true,
+    [ "break" ] = true,
+    [ "do" ] = true,
+    [ "else" ] = true,
+    [ "elseif" ] = true,
+    [ "end" ] = true,
+    [ "false" ] = true,
+    [ "for" ] = true,
+    [ "function" ] = true,
+    [ "if" ] = true,
+    [ "in" ] = true,
+    [ "local" ] = true,
+    [ "nil" ] = true,
+    [ "not" ] = true,
+    [ "or" ] = true,
+    [ "repeat" ] = true,
+    [ "return" ] = true,
+    [ "then" ] = true,
+    [ "true" ] = true,
+    [ "until" ] = true,
+    [ "while" ] = true,
+}
+
+function utils.liteSerialize(t)
+	local tTracking = {}
+    local sType = type(t)
+    if sType == "table" then
+        if tTracking[t] ~= nil then
+            error( "Cannot serialize table with recursive entries", 0 )
+        end
+        tTracking[t] = true
+        if next(t) == nil then
+            return "{}"
+        else
+            local sResult = "{"
+            local tSeen = {}
+            for k,v in ipairs(t) do
+                tSeen[k] = true
+                sResult = sResult .. utils.liteSerialize( v, tTracking ) .. ","
+            end
+            for k,v in pairs(t) do
+                if not tSeen[k] then
+                    local sEntry
+                    if type(k) == "string" and not luaKeywrds[k] and string.match( k, "^[%a_][%a%d_]*$" ) then
+                        sEntry = k .. "=" .. utils.liteSerialize( v, tTracking ) .. ","
+                    else
+                        sEntry = "[" .. utils.liteSerialize( k, tTracking ) .. "]=" .. utils.liteSerialize( v, tTracking ) .. ","
+                    end
+                    sResult = sResult .. sEntry
+                end
+            end
+            sResult = sResult .. "}"
+            return sResult
+        end
+    elseif sType == "string" then
+        return string.format( "%q", t )
+    elseif sType == "number" or sType == "boolean" or sType == "nil" then
+        return tostring(t)
+    else
+        error( "Cannot serialize type "..sType, 0 )
+    end
+end
+
+-- Utilities END --
+
+-- Base64 START -- By alexthkloss
+
+local bChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+function base64.encode(sData)
+	if type(sData) == "table" then sData = string.char(unpack(sData)) end
+	return ((sData:gsub('.', function(x) 
+		local r,bChars='',x:byte()
+		for i=8,1,-1 do r=r..(bChars%2^i-bChars%2^(i-1)>0 and '1' or '0') end
+		return r;
+	end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+		if (#x < 6) then return '' end
+		local c=0
+		for i=1,6 do c=c+(x:sub(i,i)=='1' and 2^(6-i) or 0) end
+		return bChars:sub(c+1,c+1)
+	end)..({ '', '==', '=' })[#sData%3+1])
+end
+
+function base64.decode(sData)
+	utils.assert(type(sData) == "string", "bad argument #1: string expected, got "..type(sData), 2)
+
+	sData = string.gsub(sData, '[^'..bChars..'=]', '')
+	return utils.toCharArray((sData:gsub('.', function(x)
+		if (x == '=') then return '' end
+		local r,f='',(bChars:find(x)-1)
+		for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
+		return r;
+	end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
+		if (#x ~= 8) then return '' end
+		local c=0
+		for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
+		return string.char(c)
+	end)))
+end
+
+-- Base64 END --
+
+-- RC4 START -- By Anavrins
+
+function rc4.new(key, drop)
+	local key = type(key) == "table" and {unpack(key)} or {tostring(key):byte(1,-1)}
+	local S = {}
+	local i, j = 0, 0
+	local drop = drop or 3072
+
+	for i = 0, 255 do
+		S[i] = i
+	end
+	for i = 0, 255 do
+		j = (j + S[i] + key[(i % #key) + 1]) % 256
+		S[i], S[j] = S[j], S[i]
+	end
+	j = 0
+	for n = 1, drop do
+		i = (i + 1) % 256
+		j = (j + S[i]) % 256
+		S[i], S[j] = S[j], S[i]
+	end
+	return function(data)
+		local data = type(data) == "table" and {unpack(data)} or {tostring(data):byte(1,-1)}
+		for n = 1, #data do
+			i = (i + 1) % 256
+			j = (j + S[i]) % 256
+			S[i], S[j] = S[j], S[i]
+			data[n] = bxor(data[n], S[(S[i] + S[j]) % 256])
+			if n % 1000000 == 0 then os.queueEvent("") os.pullEvent("") end
+		end
+		return setmetatable(data, byteArrayToString_mt)
+	end
+end
+
+-- RC4 END
+
+-- SHA-256 START -- By GravityScore
+
+local MOD = 2^32
+local MODM = MOD-1
+
+local function memoize(f)
+	local mt = {}
+	local t = setmetatable({}, mt)
+	function mt:__index(k)
+		local v = f(k)
+		t[k] = v
+		return v
+	end
+	return t
+end
+
+local function make_bitop_uncached(t, m)
+	local function bitop(a, b)
+		local res,p = 0,1
+		while a ~= 0 and b ~= 0 do
+			local am, bm = a % m, b % m
+			res = res + t[am][bm] * p
+			a = (a - am) / m
+			b = (b - bm) / m
+			p = p*m
+		end
+		res = res + (a + b) * p
+		return res
+	end
+	return bitop
+end
+
+local function make_bitop(t)
+	local op1 = make_bitop_uncached(t,2^1)
+	local op2 = memoize(function(a) return memoize(function(b) return op1(a, b) end) end)
+	return make_bitop_uncached(op2, 2 ^ (t.n or 1))
+end
+
+local sbxor1 = make_bitop({[0] = {[0] = 0,[1] = 1}, [1] = {[0] = 1, [1] = 0}, n = 4})
+
+local function sbxor(a, b, c, ...)
+	local z = nil
+	if b then
+		a = a % MOD
+		b = b % MOD
+		z = sbxor1(a, b)
+		if c then z = sbxor(z, c, ...) end
+		return z
+	elseif a then return a % MOD
+	else return 0 end
+end
+
+local function sband(a, b, c, ...)
+	local z
+	if b then
+		a = a % MOD
+		b = b % MOD
+		z = ((a + b) - sbxor1(a,b)) / 2
+		if c then z = bit32_sband(z, c, ...) end
+		return z
+	elseif a then return a % MOD
+	else return MODM end
+end
+
+local function sbnot(x) return (-1 - x) % MOD end
+
+local function srshift1(a, disp)
+	if disp < 0 then return lshift(a,-disp) end
+	return math.floor(a % 2 ^ 32 / 2 ^ disp)
+end
+
+local function srshift(x, disp)
+	if disp > 31 or disp < -31 then return 0 end
+	return srshift1(x % MOD, disp)
+end
+
+local function slshift(a, disp)
+	if disp < 0 then return srshift(a,-disp) end 
+	return (a * 2 ^ disp) % 2 ^ 32
+end
+
+local function srrotate(x, disp)
+	x = x % MOD
+	disp = disp % 32
+	local low = sband(x, 2 ^ disp - 1)
+	return srshift(x, disp) + slshift(low, 32 - disp)
+end
+
+local function initH256(H)
+	H[1] = 0x6A09E667
+	H[2] = 0xBB67AE85
+	H[3] = 0x3C6EF372
+	H[4] = 0xA54FF53A
+	H[5] = 0x510E527F
+	H[6] = 0x9B05688C
+	H[7] = 0x1F83D9AB
+	H[8] = 0x5BE0CD19
+	return H
+end
+
+local k = {
+	0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5,
+	0x3956C25B, 0x59F111F1, 0x923F82A4, 0xAB1C5ED5,
+	0xD807AA98, 0x12835B01, 0x243185BE, 0x550C7DC3,
+	0x72BE5D74, 0x80DEB1FE, 0x9BDC06A7, 0xC19BF174,
+	0xE49B69C1, 0xEFBE4786, 0x0FC19DC6, 0x240CA1CC,
+	0x2DE92C6F, 0x4A7484AA, 0x5CB0A9DC, 0x76F988DA,
+	0x983E5152, 0xA831C66D, 0xB00327C8, 0xBF597FC7,
+	0xC6E00BF3, 0xD5A79147, 0x06CA6351, 0x14292967,
+	0x27B70A85, 0x2E1B2138, 0x4D2C6DFC, 0x53380D13,
+	0x650A7354, 0x766A0ABB, 0x81C2C92E, 0x92722C85,
+	0xA2BFE8A1, 0xA81A664B, 0xC24B8B70, 0xC76C51A3,
+	0xD192E819, 0xD6990624, 0xF40E3585, 0x106AA070,
+	0x19A4C116, 0x1E376C08, 0x2748774C, 0x34B0BCB5,
+	0x391C0CB3, 0x4ED8AA4A, 0x5B9CCA4F, 0x682E6FF3,
+	0x748F82EE, 0x78A5636F, 0x84C87814, 0x8CC70208,
+	0x90BEFFFA, 0xA4506CEB, 0xBEF9A3F7, 0xC67178F2,
+}
+
+
+local function num2s(l, n)
+	local s = ""
+	for i = 1, n do
+		local rem = l % 256
+		s = string.char(rem) .. s
+		l = (l - rem) / 256
+	end
+	return s
+end
+
+local function s232num(s, i)
+	local n = 0
+	for i = i, i + 3 do n = n*256 + string.byte(s, i) end
+	return n
+end
+
+local function preproc(msg, len)
+	local extra = 64 - ((len + 9) % 64)
+	len = num2s(8 * len, 8)
+	msg = msg .. "\128" .. string.rep("\0", extra) .. len
+	assert(#msg % 64 == 0)
+	return msg
+end
+
+local function digestblock(msg, i, H)
+	local w = {}
+	for j = 1, 16 do w[j] = s232num(msg, i + (j - 1)*4) end
+	for j = 17, 64 do
+		local v = w[j - 15]
+		local s0 = sbxor(srrotate(v, 7), srrotate(v, 18), srshift(v, 3))
+		v = w[j - 2]
+		w[j] = w[j - 16] + s0 + w[j - 7] + sbxor(srrotate(v, 17), srrotate(v, 19), srshift(v, 10))
+	end
+
+	local a, b, c, d, e, f, g, h = H[1], H[2], H[3], H[4], H[5], H[6], H[7], H[8]
+	for i = 1, 64 do
+		local s0 = sbxor(srrotate(a, 2), srrotate(a, 13), srrotate(a, 22))
+		local maj = sbxor(sband(a, b), sband(a, c), sband(b, c))
+		local t2 = s0 + maj
+		local s1 = sbxor(srrotate(e, 6), srrotate(e, 11), srrotate(e, 25))
+		local ch = sbxor(sband(e, f), sband(sbnot(e), g))
+		local t1 = h + s1 + ch + k[i] + w[i]
+		h, g, f, e, d, c, b, a = g, f, e, d + t1, c, b, a, t1 + t2
+	end
+
+	H[1] = sband(H[1] + a)
+	H[2] = sband(H[2] + b)
+	H[3] = sband(H[3] + c)
+	H[4] = sband(H[4] + d)
+	H[5] = sband(H[5] + e)
+	H[6] = sband(H[6] + f)
+	H[7] = sband(H[7] + g)
+	H[8] = sband(H[8] + h)
+end
+
+local sha_func = {
+	toBytes = function(self)
+		local bytes = {}
+		for i = 1, 8 do
+			bytes[#bytes+1] = band(brshift(band(self[i], 0xFF000000), 24), 0xFF)
+			bytes[#bytes+1] = band(brshift(band(self[i], 0xFF0000), 16), 0xFF)
+			bytes[#bytes+1] = band(brshift(band(self[i], 0xFF00), 8), 0xFF)
+			bytes[#bytes+1] = band(self[i], 0xFF)
+		end
+		return bytes
+	end,
+	toString = function(self)
+		return (("%08x"):rep(8)):format(unpack(self))
+	end,
+}
+
+local sha_mt = {
+	__type = "SHA256",
+	__index = sha_func,
+	__newindex = function()end,
+	__tostring = sha_func.toString,
+	__eq = function(a, b)
+		for i = 1, 8 do
+			if a[i] ~= b[i] then
+				return false
+			end
+		end
+		return true
+	end,
+	__lt = function(a,b)
+		for i = 1, 8 do
+			if a[i] >= b[i] then
+				return false
+			end
+			return true
+		end
+	end,
+	__le = function(a,b)
+		for i = 1, 8 do
+			if a[i] > b[i] then
+				return false
+			end
+			return true
+		end
+	end,
+}
+
+function sha.digest(data)
+	if type(data) == "table" then data = string.char(unpack(data)) end
+
+	data = preproc(data, #data)
+	local H = initH256({})
+	for i = 1, #data, 64 do digestblock(data, i, H) end
+	return setmetatable(H, sha_mt)
+end
+
+function sha.hmac(input, key)
+	local input = type(input) == "table" and {unpack(input)} or {tostring(input):byte(1,-1)}
+	local key = type(key) == "table" and {unpack(key)} or {tostring(key):byte(1,-1)}
+
+	local blocksize = 64
+
+	key = #key > blocksize and sha.digest(key):toBytes() or key
+
+	local ipad = {}
+	local opad = {}
+	local padded_key = {}
+
+	for i = 1, blocksize do
+		ipad[i] = bxor(0x36, key[i] or 0)
+		opad[i] = bxor(0x5C, key[i] or 0)
+	end
+
+	for i = 1, #input do
+		ipad[blocksize+i] = input[i]
+	end
+
+	ipad = sha.digest(ipad):toBytes()
+
+	for i=1, blocksize do
+		padded_key[i] = opad[i]
+		padded_key[blocksize+i] = ipad[i]
+	end
+
+	return sha.digest(padded_key)
+end
+
+-- SHA-256 END --
+
+-- XOR START -- By Anavrins
+
+function xor.shift(data, byte)
+	utils.assert(type(byte) == "number", "bad argument #2: number expected, got "..type(byte), 2)
+	utils.assert(byte >= 0x00 and byte <= 0xFF, "bad argument #2: must be between 0x00 and 0xFF", 2)
+	local data = type(data) == "table" and {unpack(data)} or {tostring(data):byte(1,-1)}
+	for i = 1, #data do
+		data[i] = bxor(data[i], byte)
+	end
+	return setmetatable(data, byteArrayToString_mt)
+end
+
+function xor.vigenere(data, key)
+	local data = type(data) == "table" and {unpack(data)} or {tostring(data):byte(1,-1)}
+	local key = type(key) == "table" and {unpack(key)} or {tostring(key):byte(1,-1)}
+	for i = 1, #data do
+		data[i] = bxor(data[i], key[(i-1)%(#key)+1] or 0xFF)
+	end
+	return setmetatable(data, byteArrayToString_mt)
+end
+
+-- XOR END --
+
+-- AES-(128/192/256) START -- By Anavrins
+
+local Rcon = {}
+local sbox = {}
+local inv_sbox = {}
+local gf_mul = {
+	[2] = {},
+	[3] = {},
+	[9] = {},
+	[11] = {},
+	[13] = {},
+	[14] = {},
+}
+
+function init.generateTables()
+	local ord, irrPoly = 0xFF, 0x11B
+	local exp, log, a, rcon = {}, {}, 1, 1
+	for i = 0, ord-1 do
+		exp[i] = a
+		log[a] = i
+		a = bxor(blshift(a, 1), a)
+		a = a>ord and bxor(a, irrPoly) or a
+	end
+	local function parity(byte)
+		byte = bxor(byte, brshift(byte, 4))
+		byte = bxor(byte, brshift(byte, 2))
+		byte = bxor(byte, brshift(byte, 1))
+		return band(byte, 1)
+	end
+	local function affine(byte)
+		local mask, result = 0xF8, 0
+		for i = 1, 8 do
+			result = blshift(result, 1) + parity(band(byte, mask))
+			local last = band(mask, 1)
+			mask = band(brshift(mask, 1), 0xFF)
+			mask = last~=0 and bor(mask, 0x80) or band(mask, 0x7F)
+		end
+		return bxor(result, 0x63)
+	end
+	local function gfmul(op1, op2)
+		return (op2 == 0) and 0 or exp[(log[op1] + log[op2])%ord]
+	end
+
+	while rcon ~= 0x6C do
+		Rcon[#Rcon+1] = rcon
+		rcon = bxor(blshift(rcon, 1), band(irrPoly, -brshift(rcon, 7))) % 0xFF
+	end
+	for i = 0, 255 do
+		local inv = i~=0 and exp[ord-log[i]] or i
+		local map = affine(inv)
+		sbox[i] = map
+		inv_sbox[map] = i
+	end
+	for i = 0, 255 do
+		for op in pairs(gf_mul) do
+			gf_mul[op][i] = gfmul(op, i)
+		end
+	end
+end
+
+local function subBytes(input, invert)
+	for i = 1, #input do
+		input[i] = invert and inv_sbox[input[i]] or sbox[input[i]]
+	end
+	return input
+end
+
+local function shiftRows(input)
+	input[1], input[5], input[9], input[13],
+	input[2], input[6], input[10],input[14],
+	input[3], input[7], input[11],input[15],
+	input[4], input[8], input[12],input[16]
+	=
+	input[1], input[5], input[9], input[13], 
+	input[6], input[10],input[14],input[2], 
+	input[11],input[15],input[3], input[7], 
+	input[16],input[4], input[8], input[12]
+	return input
+end
+
+local function invShiftRows(input)
+	input[1], input[5], input[9], input[13],
+	input[2], input[6], input[10],input[14],
+	input[3], input[7], input[11],input[15],
+	input[4], input[8], input[12],input[16]
+	=
+	input[1], input[5], input[9], input[13],
+	input[14],input[2], input[6], input[10],
+	input[11],input[15],input[3], input[7],
+	input[8], input[12],input[16],input[4]
+	return input
+end
+
+local function mixColumn(column)
+	column[1], column[2], column[3], column[4]
+	=
+	bxor(gf_mul[2][column[1]], bxor(gf_mul[3][column[2]], bxor(column[3], column[4]))),
+	bxor(column[1], bxor(gf_mul[2][column[2]], bxor(gf_mul[3][column[3]], column[4]))),
+	bxor(column[1], bxor(column[2], bxor(gf_mul[2][column[3]], gf_mul[3][column[4]]))),
+	bxor(gf_mul[3][column[1]], bxor(column[2], bxor(column[3], gf_mul[2][column[4]])))
+	return column
+end
+
+local function invMixColumn(column)
+	column[1], column[2], column[3], column[4]
+	=
+	bxor(gf_mul[14][column[1]], bxor(gf_mul[11][column[2]], bxor(gf_mul[13][column[3]], gf_mul[9][column[4]]))),
+	bxor(gf_mul[9][column[1]], bxor(gf_mul[14][column[2]], bxor(gf_mul[11][column[3]], gf_mul[13][column[4]]))),
+	bxor(gf_mul[13][column[1]], bxor(gf_mul[9][column[2]], bxor(gf_mul[14][column[3]], gf_mul[11][column[4]]))),
+	bxor(gf_mul[11][column[1]], bxor(gf_mul[13][column[2]], bxor(gf_mul[9][column[3]], gf_mul[14][column[4]])))
+	return column
+end
+
+local function mixColumns(input, invert)
+	local c1 = {input[1], input[2], input[3], input[4]}
+	local c2 = {input[5], input[6], input[7], input[8]}
+	local c3 = {input[9], input[10], input[11], input[12]}
+	local c4 = {input[13], input[14], input[15], input[16]}
+
+	c1 = invert and invMixColumn(c1) or mixColumn(c1)
+	c2 = invert and invMixColumn(c2) or mixColumn(c2)
+	c3 = invert and invMixColumn(c3) or mixColumn(c3)
+	c4 = invert and invMixColumn(c4) or mixColumn(c4)
+
+	input[1], input[5], input[9], input[13],
+	input[2], input[6], input[10], input[14],
+	input[3], input[7], input[11], input[15],
+	input[4], input[8], input[12], input[16]
+	=
+	c1[1], c2[1], c3[1], c4[1],
+	c1[2], c2[2], c3[2], c4[2],
+	c1[3], c2[3], c3[3], c4[3],
+	c1[4], c2[4], c3[4], c4[4]
+	return input
+end
+
+local function addRoundKey(input, exp_key, round)
+	for i = 1, 16 do
+		input[i] = bxor(input[i], exp_key[((round)*16)+i])
+	end
+	return input
+end
+
+local function key_schedule(enc_key)
+	local n, b, key_type = 0, 0, 1
+	if #enc_key == 16 then
+		n = 16
+		b = 176
+	elseif #enc_key == 24 then
+		n = 24
+		b = 208
+		key_type = 2
+	elseif #enc_key == 32 then
+		n = 32
+		b = 240
+		key_type = 3
+	else
+		error("Encryption key size must be 16, 24, 32 bytes.")
+	end
+	
+	local exp_key = {}
+	local rcon_iter = 1
+	for i = 1, n do
+		exp_key[i] = enc_key[i]
+	end
+	while #exp_key < b do
+		local t1, t2, t3, t4 = bxor(sbox[exp_key[#exp_key-2]], Rcon[rcon_iter]), sbox[exp_key[#exp_key-1]], sbox[exp_key[#exp_key]], sbox[exp_key[#exp_key-3]]
+		rcon_iter = rcon_iter+1 
+		exp_key[#exp_key+1] = bxor(t1, exp_key[#exp_key-(n-1)])
+		exp_key[#exp_key+1] = bxor(t2, exp_key[#exp_key-(n-1)])
+		exp_key[#exp_key+1] = bxor(t3, exp_key[#exp_key-(n-1)])
+		exp_key[#exp_key+1] = bxor(t4, exp_key[#exp_key-(n-1)])
+		for i = 1, 3 do
+			exp_key[#exp_key+1] = bxor(exp_key[#exp_key-3], exp_key[#exp_key-(n-1)])
+			exp_key[#exp_key+1] = bxor(exp_key[#exp_key-3], exp_key[#exp_key-(n-1)])
+			exp_key[#exp_key+1] = bxor(exp_key[#exp_key-3], exp_key[#exp_key-(n-1)])
+			exp_key[#exp_key+1] = bxor(exp_key[#exp_key-3], exp_key[#exp_key-(n-1)])
+		end
+		if key_type == 3 then
+			exp_key[#exp_key+1] = bxor(sbox[exp_key[#exp_key-3]], exp_key[#exp_key-(n-1)])
+			exp_key[#exp_key+1] = bxor(sbox[exp_key[#exp_key-3]], exp_key[#exp_key-(n-1)])
+			exp_key[#exp_key+1] = bxor(sbox[exp_key[#exp_key-3]], exp_key[#exp_key-(n-1)])
+			exp_key[#exp_key+1] = bxor(sbox[exp_key[#exp_key-3]], exp_key[#exp_key-(n-1)])
+		end
+		if key_type == 2 or key_type == 3 then
+			for j = 1, key_type do
+				exp_key[#exp_key+1] = bxor(exp_key[#exp_key-3], exp_key[#exp_key-(n-1)])
+				exp_key[#exp_key+1] = bxor(exp_key[#exp_key-3], exp_key[#exp_key-(n-1)])
+				exp_key[#exp_key+1] = bxor(exp_key[#exp_key-3], exp_key[#exp_key-(n-1)])
+				exp_key[#exp_key+1] = bxor(exp_key[#exp_key-3], exp_key[#exp_key-(n-1)])
+			end
+		end
+	end
+	return exp_key
+end
+
+local function encryptBlock(state, exp_key)
+	local state = {unpack(state)}
+	local nr = 0
+	if #exp_key == 176 then
+		nr = 10
+	elseif #exp_key == 216 then
+		nr = 12
+	elseif #exp_key == 256 then
+		nr = 14
+	else
+		error("encrypt_block: Unknown key size? ("..#exp_key..")", 2)
+	end
+
+	state = addRoundKey(state, exp_key, 0)
+
+	for round_num = 1, nr-1 do
+		state = subBytes(state)
+		state = shiftRows(state)
+		state = mixColumns(state)
+		state = addRoundKey(state, exp_key, round_num)
+	end
+
+	state = subBytes(state)
+	state = shiftRows(state)
+	state = addRoundKey(state, exp_key, nr)
+
+	return state
+end
+
+local function decryptBlock(state, exp_key)
+	local state = {unpack(state)}
+	local nr = 0
+	if #exp_key == 176 then
+		nr = 10
+	elseif #exp_key == 216 then
+		nr = 12
+	elseif #exp_key == 256 then
+		nr = 14
+	else
+		error("decrypt_block: Unknown key size?", 2)
+	end
+
+	state = addRoundKey(state, exp_key, nr)
+
+	for round_num = nr-1, 1, -1 do
+		state = invShiftRows(state)
+		state = subBytes(state, true)
+		state = addRoundKey(state, exp_key, round_num)
+		state = mixColumns(state, true)
+	end
+
+	state = invShiftRows(state)
+	state = subBytes(state, true)
+	state = addRoundKey(state, exp_key, 0)
+
+	return state
+end
+
+function aes.validate(_m)
+	if type(_m) ~= "table" then return false, "Message is not a table" end
+	if #_m ~= 2 then return false, "Table did not contain 2 indexes" end
+	local c_text, iv = _m[1], _m[2]
+	if type(c_text) ~= "table" then return false, "Ciphertext is not a table" end
+	if type(iv) ~= "table" then return false, "IV is not a table" end
+	if #c_text < 16 then return false, "Ciphertext is less than 16 bytes" end
+	if #iv < 16 then return false, "IV is less than 16 bytes" end
+	if (#c_text % 16) ~= 0 then return false, "Ciphertext is not a multiple of 16" end
+	for i = 1, #c_text do
+		if type(c_text[i]) ~= "number" then return false, "Ciphertext["..i.."] is not a number" end
+		if c_text[i] < 0x00 or c_text[i] > 0xFF then return false , "Ciphertext["..i.."] is not between 0x00 and 0xFF" end
+	end
+	for i = 1, #iv do
+		if type(iv[i]) ~= "number" then return false, "iv["..i.."] is not a number" end
+		if iv[i] < 0x00 or iv[i] > 0xFF then return false , "iv["..i.."] is not between 0x00 and 0xFF" end
+	end
+	return c_text, iv
+end
+
+function aes.strToBlocks(str)
+	local rawBytestream = {}
+	local blocks = {}
+	for i=1, #str do
+		rawBytestream[i] = str:byte(i,i)
+	end
+	for i=1, math.ceil(#rawBytestream / 16) do
+		blocks[i] = {}
+		for j=1, 16 do
+			blocks[i][j] = rawBytestream[ ((i-1)*16)+j ] or 0
+		end
+	end
+	return blocks
+end
+
+-- Padding modes:
+--	1: Null padding
+--	2: PKCS7
+
+local function addPadding(data, mode)
+	local data = {unpack(data)}
+	if mode == 1 then
+		while #data % 16 ~= 0 do
+			data[#data+1] = 0x00
+		end
+	elseif mode == 2 then
+		local toPad = 16 - #data%16
+		for i = 1, toPad do
+			data[#data+1] = toPad
+		end
+	end
+	return data
+end
+
+local function remPadding(data, mode)
+	local data = {unpack(data)}
+	if mode == 1 then
+		for i = #data, #data-15, -1 do
+			if data[i] ~= 0x00 then break end
+			data[i] = nil
+		end
+	elseif mode == 2 then
+		local pad = data[#data]
+		for i = #data, (#data-pad)+1, -1 do
+			if data[i] ~= pad then return nil, "Padding Error" end
+			data[i] = nil
+		end
+	end
+	return data
+end
+
+local function increment_ctr(cnt, incAmt)
+	local bcnt = #cnt
+	cnt[bcnt] = cnt[bcnt] + incAmt
+	for i=bcnt, 2, -1 do
+		if cnt[i] <= 255 then
+			break
+		end
+		local carry = math.floor(cnt[i] / 256)
+		cnt[i] = cnt[i]%256
+		cnt[i-1] = cnt[i-1]+carry
+	end
+	return cnt
+end
+
+local gcm_poly = {0x00, 0xE1}
+local gcm_mask = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01}
+
+local function gcm_gf_mult(a, b)
+	local Z = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+	local V = a
+	for x = 0, 127 do
+		if band(b[(brshift(x, 3))+1], gcm_mask[(band(x, 7))+1]) > 0 then
+			for y = 1, 16 do
+				Z[y] = bxor(Z[y], V[y])
+			end
+		end
+		local z = band(V[16], 1)
+		for i = 16, 2, -1 do
+			V[i] = bor(brshift(V[i], 1), band(blshift(V[i-1], 7), 0x80))
+		end
+		V[1] = brshift(V[1], 1)
+		V[1] = bxor(V[1], gcm_poly[z+1])
+	end
+	return Z
+end
+
+local cipherMode = {
+	ECB = {
+		encrypt = function(data, key, iv)
+			return encryptBlock(data, key)
+		end,
+		decrypt = function(data, key, iv)
+			return decryptBlock(data, key)
+		end,
+		requirePadding = true,
+	},
+
+	CBC = {
+		encrypt = function(data, key, iv)
+			for i = 1, 16 do
+				data[i] = bxor(data[i], iv[i])
+			end
+			data = encryptBlock(data, key)
+			return data, data
+		end,
+		decrypt = function(data, key, iv)
+			local nextIV = {unpack(data)}
+			data = decryptBlock(data, key)
+			for i = 1, 16 do
+				data[i] = bxor(data[i], iv[i])
+			end
+			return data, nextIV
+		end,
+		requirePadding = true,
+	},
+
+	PCBC = {
+		encrypt = function(data, key, iv)
+			local nextIV = {unpack(data)}
+			for i = 1, 16 do
+				data[i] = bxor(data[i], iv[i])
+			end
+			data = encryptBlock(data, key)
+			for i = 1, 16 do
+				nextIV[i] = bxor(nextIV[i], data[i])
+			end
+			return data, nextIV
+		end,
+		decrypt = function(data, key, iv)
+			local nextIV = {unpack(data)}
+			data = decryptBlock(data, key)
+			for i = 1, 16 do
+				data[i] = bxor(data[i], iv[i])
+				nextIV[i] = bxor(data[i], nextIV[i])
+			end
+			return data, nextIV
+		end,
+		requirePadding = true
+	},
+
+	CFB = {
+		encrypt = function(data, key, iv)
+			local ks = encryptBlock(iv, key)
+			for i = 1, #data do
+				data[i] = bxor(data[i], ks[i])
+			end
+			return data, data
+		end,
+		decrypt = function(data, key, iv)
+			local nextIV = {unpack(data)}
+			local ks = encryptBlock(iv, key)
+			for i = 1, #data do
+				data[i] = bxor(data[i], ks[i])
+			end
+			return data, nextIV
+		end,
+		requirePadding = false
+	},
+
+	OFB = {
+		encrypt = function(data, key, iv)
+			iv = encryptBlock(iv, key)
+			for i = 1, #data do
+				data[i] = bxor(data[i], iv[i])
+			end
+			return data, iv
+		end,
+		requirePadding = false
+	},
+
+	CTR = {
+		encrypt = function(data, key, iv)
+			local ks = encryptBlock(iv, key)
+			for i = 1, #data do
+				data[i] = bxor(data[i], ks[i])
+			end
+			increment_ctr(iv, 1)
+			return data, iv
+		end,
+		requirePadding = false
+	},
+
+	GCM = {
+		encrypt = function(data, key, iv, gcmdata, blcCnt, totalCnt)
+			if blcCnt == 1 then
+				gcmdata.firsttag = encryptBlock(iv, key)
+				increment_ctr(iv, 1)
+				gcmdata.hkey = encryptBlock({0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, key)
+				for i = 1, math.ceil(#gcmdata.addData/16) do
+					local t = {}
+					for j = 1, 16 do
+						t[j] = gcmdata.addData[((i-1)*16)+j]
+					end
+					gcmdata.tag = gcm_gf_mult(addPadding(t, 1), gcmdata.hkey)
+				end
+			end
+
+			local ks = encryptBlock(iv, key)
+			increment_ctr(iv, 1)
+
+			for i = 1, 16 do
+				data[i] = data[i] and bxor(data[i], ks[i]) or nil
+				gcmdata.tag[i] = bxor(gcmdata.tag[i], data[i] or 0)
+			end
+			gcmdata.tag = gcm_gf_mult(gcmdata.tag, gcmdata.hkey)
+
+			if blcCnt == totalCnt then
+				local len = increment_ctr({0,0,0,0,0,0,0,0}, (#gcmdata.addData)*8)
+				table.foreach(increment_ctr({0,0,0,0,0,0,0,0}, (#data+((totalCnt-1)*16))*8), function(k,v) len[#len+1] = v end)
+				for i = 1, 16 do
+					gcmdata.tag[i] = bxor(gcmdata.tag[i], len[i])
+				end
+				gcmdata.tag = gcm_gf_mult(gcmdata.tag, gcmdata.hkey)
+				for i = 1, 16 do
+					gcmdata.tag[i] = bxor(gcmdata.tag[i], gcmdata.firsttag[i])
+				end
+			end
+
+			return data, iv, gcmdata
+		end,
+		decrypt = function(data, key, iv, gcmdata, blcCnt, totalCnt)
+			if blcCnt == 1 then
+				gcmdata.firsttag = encryptBlock(iv, key)
+				increment_ctr(iv, 1)
+				gcmdata.hkey = encryptBlock({0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, key)
+				for i = 1, math.ceil(#gcmdata.addData/16) do
+					local t = {}
+					for j = 1, 16 do
+						t[j] = gcmdata.addData[((i-1)*16)+j]
+					end
+					gcmdata.tag = gcm_gf_mult(addPadding(t, 1), gcmdata.hkey)
+				end
+			end
+
+			local ks = encryptBlock(iv, key)
+			increment_ctr(iv, 1)
+
+			for i = 1, 16 do
+				gcmdata.tag[i] = bxor(gcmdata.tag[i], data[i] or 0)
+				data[i] = data[i] and bxor(data[i], ks[i]) or nil
+			end
+			gcmdata.tag = gcm_gf_mult(gcmdata.tag, gcmdata.hkey)
+
+			if blcCnt == totalCnt then
+				local len = increment_ctr({0,0,0,0,0,0,0,0}, (#gcmdata.addData)*8)
+				table.foreach(increment_ctr({0,0,0,0,0,0,0,0}, (#data+((totalCnt-1)*16))*8), function(k,v) len[#len+1] = v end)
+				for i = 1, 16 do
+					gcmdata.tag[i] = bxor(gcmdata.tag[i], len[i])
+				end
+				gcmdata.tag = gcm_gf_mult(gcmdata.tag, gcmdata.hkey)
+				for i = 1, 16 do
+					gcmdata.tag[i] = bxor(gcmdata.tag[i], gcmdata.firsttag[i])
+				end
+			end
+
+			return data, iv, gcmdata
+		end,
+		requirePadding = false
+	}
+}
+
+cipherMode.OFB.decrypt = cipherMode.OFB.encrypt
+cipherMode.CTR.decrypt = cipherMode.CTR.encrypt
+
+function aes.encrypt(data, key, iv, mode, paddingMode, addData)
+	local data = type(data) == "table" and {unpack(data)} or {tostring(data):byte(1,-1)}
+	local iv = iv and {unpack(iv)} or {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+	local keySched = key_schedule(key)
+	local output = {}
+	local gcmdata = {
+		addData = type(addData) == "table" and {unpack(addData)} or {tostring(addData):byte(1,-1)},
+	}
+
+	mode = mode and mode:upper() or "CBC"
+
+	local modeObj = cipherMode[mode]
+	utils.assert(modeObj, "Invalid mode: "..mode..", valid: ECB, CBC, PCBC, CFB, OFB, CTR, GCM", 2)
+	local modeFunc = modeObj.encrypt
+
+	data = modeObj.requirePadding and addPadding(data, paddingMode or 2) or data
+
+	local blockAmt = math.ceil(#data/16)
+	for i = 1, blockAmt do
+		local block = {}
+		for j = 1, 16 do
+			block[j] = data[((i-1)*16)+j]
+		end
+
+		block, iv, gcmdata = modeFunc(block, keySched, iv, gcmdata, i, blockAmt)
+		for j = 1, 16 do
+			output[#output+1] = block[j]
+		end
+
+		if i % 1000 == 0 then
+			os.queueEvent("")
+			os.pullEvent("")
+		end
+	end
+	return setmetatable(output, byteArrayToString_mt), gcmdata and gcmdata.tag or nil
+end
+
+function aes.decrypt(data, key, iv, mode, paddingMode, addData)
+	local data = type(data) == "table" and {unpack(data)} or {tostring(data):byte(1,-1)}
+	local iv = iv and {unpack(iv)} or {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+	local keySched = key_schedule(key)
+	local output = {}
+	local gcmdata = {
+		addData = type(addData) == "table" and {unpack(addData)} or {tostring(addData):byte(1,-1)},
+	}
+
+	mode = mode and mode:upper() or "CBC"
+
+	local modeObj = cipherMode[mode]
+	utils.assert(modeObj, "Invalid mode: "..mode..", valid: ECB, CBC, PCBC, CFB, OFB, CTR, GCM", 2)
+	if modeObj.requirePadding then utils.assert(#data%16 == 0, "decrypt: ciphertext lenght invalid #data = "..#data, 2) end
+	local modeFunc = modeObj.decrypt
+
+	local blockAmt = math.ceil(#data/16)
+	for i = 1, blockAmt do
+		local block = {}
+		for j = 1, 16 do
+			block[j] = data[((i-1)*16)+j]
+		end
+
+		block, iv, gcmdata = modeFunc(block, keySched, iv, gcmdata, i, blockAmt)
+
+		for j = 1, 16 do
+			output[#output+1] = block[j]
+		end
+
+		if i % 1000 == 0 then
+			os.queueEvent("")
+			os.pullEvent("")
+		end
+	end
+
+	if modeObj.requirePadding then
+		local err
+		output, err = remPadding(output, paddingMode or 2)
+		if not output then return nil, err end
+	end
+
+	return setmetatable(output, byteArrayToString_mt), gcmdata and gcmdata.tag or nil
+end
+
+local counter_mode_context = {
+	increment_ctr = function(self, incAmt)
+		self.ctr[16] = self.ctr[16] + incAmt
+		for i=16,2,-1 do
+			if self.ctr[i] <= 255 then
+				break
+			end
+			local carry = math.floor(self.ctr[i] / 255)
+			self.ctr[i] = self.ctr[i]%256
+			self.ctr[i-1] = self.ctr[i-1]+carry
+		end
+	end,
+
+	set_key = function(self, key)
+		if type(key) == "table" then
+			if #key < 16 then
+				error("set_key: Key length ("..#key..") must be at least 16 bytes!", 2)
+			end
+			for i=1, 16 do
+				if type(key[i]) ~= "number" or key[i] < 0x00 or key[i] > 0xFF then
+					if type(key[i]) == "nil" then
+						error("set_key: Value key["..i.."] is invalid: nil", 2)
+					else
+						error("set_key: Value key["..i.."] is invalid: "..key[i], 2)
+					end
+				end
+				self.key[i] = key[i]
+			end
+		else
+			error("set_key: Key type is not supported: "..type(key), 2)
+		end
+		self.key = key_schedule(self.key)
+	end,
+	set_ctr = function(self, ctr)
+		if type(ctr) == "table" then
+			if #ctr < 16 then
+				error("set_ctr: Counter length ("..#ctr..") must be at least 16 bytes!", 2)
+			end
+			for i=1, 16 do
+				if type(ctr[i]) ~= "number" or ctr[i] > 255 or ctr[i] < 0 then
+					if type(ctr[i]) == "nil" then
+						error("set_ctr: Value ctr["..i.."] is invalid: nil", 2)
+					else
+						error("set_ctr: Value ctr["..i.."] is invalid: "..ctr[i], 2)
+					end
+				end
+				self.ctr[i] = ctr[i]
+			end
+		else
+			error("set_ctr: Counter type is not supported: "..type(ctr), 2)
+		end
+	end,
+	encrypt = function(self, data)
+		local data = type(data) == "table" and {unpack(data)} or {tostring(data):byte(1,-1)}
+		local genBytes = {}
+		if #self.stream_cache >= #data then
+			for i = 1, #data do
+				genBytes[#genBytes+1] = table.remove(self.stream_cache)
+			end
+		else
+			for i = 1, #self.stream_cache do
+				genBytes[#genBytes+1] = table.remove(self.stream_cache)
+			end
+			local blocksToGenerate = math.ceil((#data - #genBytes) / 16)
+			for i = 1, blocksToGenerate-1 do
+				local block = encryptBlock(self.ctr, self.key)
+				self:increment_ctr(1)
+				for j = 1, 16 do
+					genBytes[#genBytes+1] = block[j]
+				end
+			end
+			local block = encryptBlock(self.ctr, self.key)
+			self:increment_ctr(1)
+			for i = 1, (#data - #genBytes) do
+				genBytes[#genBytes+1] = table.remove(block, 1)
+			end
+			for i = 1, #block do
+				self.stream_cache[#self.stream_cache+1] = table.remove(block)
+			end
+		end
+		for i = 1, #data do
+			data[i] = bxor(data[i], genBytes[i])
+		end
+		return setmetatable(data, byteArrayToString_mt)
+	end,
+}
+
+function aes.newCtrMode(key, iv)
+	local context = {
+		key = {},
+		ctr = {},
+		stream_cache = {},
+	}
+	setmetatable(context, {["__index"] = counter_mode_context})
+	context:set_key(key)
+	context:set_ctr(iv)
+	return context
+end
+
+-- AES-128 END
+
+-- DHE START -- By Anavrins -- BROKEN
+
+dhe.primeMod = 625210769
+
+function dhe.modexp(base, exponent, modulo)
+	local remainder = base
+
+	for i = 1, exponent-1 do
+		remainder = remainder * remainder
+		if remainder >= modulo then
+			remainder = remainder % modulo
+		end
+	end
+
+	return remainder
+end
+
+function dhe.randomPrime(min, max)
+	while true do
+		local n = math.random(tonumber(min), tonumber(max))
+		if utils.isPrime(n) then return n end
+	end
+end
+
+function dhe.getPublicKey(cbase)
+	local base = cbase or dhe.randomPrime(2, 300)
+	local secret = math.random(10000, 99999)
+	local moddedSecret = dhe.modexp(base, secret, dhe.primeMod)
+
+	return {cbase and "dhe_response" or "dhe_initiate", base, dhe.primeMod, moddedSecret}, secret
+end
+
+function dhe.validate(msg)
+	if not type(msg) == "table" then return false, "Message is not a table" end
+	if #msg ~= 4 then return false, "Table did not contain 4 indexes" end
+	if type(msg[1]) ~= "string" then return false, "Ciphertext is not a string" end
+	if type(msg[2]) ~= "number" then return false, "Base is not a number" end
+	if type(msg[3]) ~= "number" then return false, "PrimeMod is not a number" end
+	if type(msg[4]) ~= "number" then return false, "ModdedSecret is not a number" end
+
+	if msg[2] < 2 and msg[2] > 300 and not utils.isPrime(msg[2]) then return false, "Base not prime" end
+	if msg[3] ~= dhe.primeMod then return false, "Wrong PrimeMod" end
+
+	return true
+end
+
+-- DHE END
+
+return libs

@@ -17,11 +17,12 @@ local nOption = 1
 local function drawMenu()
   term.clear()
   term.setCursorPos(1,1)
+  term.setCursorBlink(false)
   term.write("Program List")
   
   term.setCursorPos(w - 11,1)
   if nOption == 1 then
-    term.write("Email")
+    term.write("EChat")
   elseif nOption == 2 then
     term.write("FTP Server")
   elseif nOption == 3 then
@@ -39,7 +40,7 @@ local function drawFrontend()
   printCentered(math.floor(h / 2) - 3, "")
   printCentered(math.floor(h / 2) - 2, "Programs")
   printCentered(math.floor(h / 2) - 1, "")
-  printCentered(math.floor(h / 2) + 0, ((nOption == 1) and "[ Email      ]") or "Email     ")
+  printCentered(math.floor(h / 2) + 0, ((nOption == 1) and "[ EChat      ]") or "EChat     ")
   printCentered(math.floor(h / 2) + 1, ((nOption == 2) and "[ FTP Server ]") or "FTP Server")
   printCentered(math.floor(h / 2) + 2, ((nOption == 3) and "[ FTP Client ]") or "FTP Client")
   printCentered(math.floor(h / 2) + 3, ((nOption == 4) and "[ Back       ]") or "Back      ")
@@ -75,11 +76,15 @@ term.clear()
 
 --Conditions
 if nOption == 1 then
-  shell.run("BinaryOS/programs/email")
+  term.clear()
+  term.setCursorPos(1,1)
+  term.write("Chatroom: ")
+  local cr = read()
+  shell.run("/BinaryOS/programs/echat/echat", cr)
 elseif nOption == 2 then
-  shell.run("BinaryOS/programs/ftp_server")
+  shell.run("/BinaryOS/programs/ftp_server")
 elseif nOption == 3 then
-  shell.run("BinaryOS/programs/ftp_client")
+  shell.run("/BinaryOS/programs/ftp_client")
 else
   shell.run("BinaryOS/menu")
 end

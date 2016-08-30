@@ -1,0 +1,224 @@
+-- Vars
+local args = {...}
+local modem = {}
+local hist = {}
+local histc = 0
+local scrX, scrY = term.getSize()
+local cursorX, cursorY = 1, 1
+local msg = ""
+local config = {nick = "", channel = -1, key = {}}
+local chatroomPath = "/BinaryOS/programs/echat/chatrooms/"
+local lines = {"/logout: Will quit you from the chat", "/help: Will list the commands", "/nick: Change your Nick", "/me: Tell the others what you are doing","/update: Updates the chat","/clear: Clears your screen"}
+
+if not args[1] then
+  print("Please enter a chatroom name")
+  sleep(2)
+  shell.run("/BinaryOS/programsMenu")
+end
+if not fs.exists(chatroomPath..""..args[1]..".config") then
+  print("Chatroom file not found")
+  sleep(2)
+  shell.run("/BinaryOS/programsMenu")
+end
+
+local aes = dofile("/BinaryOS/libs/cryptLib").aes()
+local utils = dofile("/BinaryOS/libs/cryptLib").utils()
+
+-- Functions
+local function encrypt(plain)
+	plain = utils.toCharArray(plain)
+	local iv = utils.keygen(16)
+	local c_text = aes.encrypt(plain, config.key, iv)
+
+	return {c_text, iv}
+end
+
+local function decrypt(c_text, iv)
+	local plain = aes.decrypt(c_text, config.key, iv)
+
+	return string.char(unpack(plain))
+end
+
+local function writeToScreen(towrite)
+	term.setCursorPos(cursorX, cursorY)
+	term.write(tostring(towrite)..(" "):rep(scrX))
+	print()
+	cursorX, cursorY = term.getCursorPos()
+end
+
+local function loadConfig(conf_file)
+	local f = fs.open(chatroomPath..""..conf_file..".config","r")
+	config = textutils.unserialize(f.readAll())
+	f.close()
+	if not config then
+	  print("Config file invalid")
+	  sleep(2)
+	  shell.run("/BinaryOS/programsMenu")
+	end
+	modem.open(config.channel)
+end
+
+local function saveConfig(conf_file)
+	local f = fs.open(chatroomPath..""..conf_file..".config","w")
+	f.writeLine("{")
+	f.writeLine("  [\"nick\"] = \""..config.nick.."\",")
+	f.writeLine("  [\"channel\"] = "..config.channel..",")
+	f.writeLine("  [\"key\"] = "..textutils.serialize(config.key):gsub("\n%s*", ""))
+	f.writeLine("}")
+	f.close()
+end
+
+local function getModem()
+  local sides = rs.getSides()
+  for _, side in ipairs(sides) do
+    if peripheral.getType(side) == "modem" then
+      modem = peripheral.wrap(side)
+      modem.side = side
+      return true
+    end
+  end
+  print("No modem found!")
+  sleep(2)
+  shell.run("/BinaryOS/programsMenu")
+end
+
+local function send(tosend)
+	modem.transmit(config.channel, os.getComputerID(), encrypt(tosend))
+end
+
+-- Code
+getModem()
+loadConfig(args[1])
+saveConfig(args[1])
+term.clear()
+term.setCursorPos(1, 1)
+term.setCursorBlink(true)
+send(("<%s> joined the chat"):format(config.nick))
+
+while true do
+	term.setCursorPos(1, scrY)
+	term.setBackgroundColor(colors.gray)
+	term.clearLine()
+	term.write("> "..msg)
+	term.setBackgroundColor(colors.black)
+
+	local e = {os.pullEventRaw()}
+	if e[1] == "char" then
+		if config.nick:len()+2 > 8 then
+			add = config.nick:len()+2
+		else
+			add = 8
+		end
+		if msg:len()+add < scrX then
+			msg = msg..e[2]
+		end
+
+	elseif e[1] == "paste" then
+		msg = msg..e[2]
+
+	elseif e[1] == "modem_message" and e[3] == config.channel then
+		local c_text, iv = aes.validate(e[5])
+		if c_text then
+			rs.setOutput("left", true)
+			sleep(.1)
+			rs.setOutput("left", false)
+			local plain = decrypt(c_text, iv)
+			writeToScreen(plain)
+		else
+			printError(iv)
+		end
+
+	elseif e[1] == "terminate" then
+		msg = "/logout"
+		os.queueEvent("key", keys.enter)
+
+	elseif e[1] == "term_resize" then
+		scrX, scrY = term.getSize()
+
+	elseif e[1] == "key" then
+		if e[2] == keys.backspace then
+			msg = msg:sub(0, #msg-1)
+
+		elseif e[2] == keys.enter and msg ~= "" then
+			hist[#hist+1] = msg
+			if msg:sub(1, 1) == "/" then
+				local cmd = msg:sub(2, #msg)
+				if cmd == "help" then
+					for i = 1, #lines do 
+						writeToScreen(lines[i])
+					end
+
+				elseif cmd:sub(1, 4) == "nick" then
+					if cmd:sub(6) ~= "" then
+						local oldnick = config.nick
+						config.nick = cmd:sub(6):gsub("\"", "'"):gsub(" ", "") -- Prevent " from breaking config file and remove spaces
+						saveConfig(args[1])
+						local namechange = ("! %s is now known as %s"):format(oldnick, config.nick)
+						writeToScreen(namechange)
+						send(namechange)
+					end
+
+				elseif cmd == "logout" or cmd == "quit" then
+					msg = ("<%s> left the chat"):format(config.nick)
+					send(msg)
+					break
+
+				elseif cmd == "clear" or cmd == "clr" then
+					term.clear()
+					cursorX, cursorY = 1, 1
+
+				elseif cmd:sub(1, 2) == "me" then
+					if cmd:sub(4) ~= "" then
+						local me = ("* %s %s"):format(config.nick, cmd:sub(4))
+						writeToScreen(me)
+						send(me)
+					end
+				elseif cmd == "update" then
+					term.setCursorBlink(false)
+					writeToScreen("[Info] Updating... ")
+					local w = http.get("https://www.dropbox.com/s/d6s0zpioad1rk4o/chat.lua?dl=1")
+					if w then
+						term.setTextColor(colors.lime)
+						writeToScreen("[Info] Update complete, restart!")
+						local f = fs.open(shell.getRunningProgram(), "w")
+						f.write(w.readAll())
+						f.close()
+						term.setTextColor(colors.white)
+					else
+						term.setTextColor(colors.red)
+						writeToScreen("[Info] Update failed")
+					end
+					term.setCursorBlink(true)
+				else
+					writeToScreen("[Error] Invalid command")
+				end
+			else
+				msg = "<"..config.nick.."> "..msg
+				writeToScreen(msg)
+				send(msg)
+			end
+			histc = 0
+			msg = ""
+		elseif e[2] == keys.up then
+			histc = histc + 1
+			if histc > #hist then
+				histc = histc - 1
+			else
+				msg = hist[#hist-histc+1]
+			end
+
+		elseif e[2] == keys.down then
+			histc = histc - 1
+			if histc == 0 then
+				msg = ""
+			elseif histc < 0 then
+				histc = histc + 1
+			else
+				msg = hist[#hist-histc+1]
+			end
+		end
+	end
+end
+term.clear()
+term.setCursorPos(1, 1)
+shell.run("/BinaryOS/programsMenu")

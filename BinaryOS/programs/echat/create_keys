@@ -1,0 +1,24 @@
+local function saveConfig(conf_file)
+	local f = fs.open("/BinaryOS/programs/echat/chatrooms/"..conf_file..".config","w")
+	f.writeLine("{")
+	f.writeLine("  [\"nick\"] = \""..config.nick.."\",")
+	f.writeLine("  [\"channel\"] = "..config.channel..",")
+	f.writeLine("  [\"key\"] = "..textutils.serialize(config.key):gsub("\n%s*", ""))
+	f.writeLine("}")
+	f.close()
+end
+
+local crypt = dofile("/BinaryOS/libs/cryptLib")
+local utils = crypt.utils()
+
+config = {}
+
+write("Config name: ")
+name = read()
+write("Config channel: ")
+config.channel = read()
+write("Your nick: ")
+config.nick = read()
+print("Please wait, generating keys...")
+config.key = utils.keygen(32)
+saveConfig(name)
