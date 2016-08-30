@@ -1,0 +1,9 @@
+name = OSoDE
+    type = raw
+        url = https://raw.githubusercontent.com/Ale32bit/OSoDE/master/OSoDE.lua
+        filename = OSoDE
+    category = Utility
+    dependencies = none
+    version = 5
+    size = 3102
+end

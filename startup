@@ -1,1 +1,2 @@
+shell.run("/usr/bin/easy-shell execute")
 shell.run("BinaryOS/boot")

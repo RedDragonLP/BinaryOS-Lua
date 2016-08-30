@@ -1,0 +1,221 @@
+name = aconf
+    type = raw
+		url = https://raw.githubusercontent.com/Admicos/cc-packman-repo/master/aconf/aconf.lua
+		filename = aconf
+    category = utility configuration
+    version = 1.0.0
+    size = 1313
+    dependencies = admicos/libcfg
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25456-libcfg-a-basic-configuration-api/
+end
+
+name = bfluac
+    type = raw
+		url = https://raw.githubusercontent.com/Admicos/cc-packman-repo/master/bfluac/bfluac.lua
+		filename = bfluac
+    category = utility brainfuck
+    version = 1.0.2
+    size = 3769
+	dependencies = none
+    --link = http://www.computercraft.info/forums2/index.php?/topic/27197-bfluac-convert-brainfuck-programs-to-lua/
+end
+
+name = bfluac-helloworld
+    type = raw
+		url = https://raw.githubusercontent.com/Admicos/cc-packman-repo/master/bfluac-helloworld/bfluac-helloworld.lua
+		filename = bfluac-helloworld
+    category = brainfuck
+    version = 1.0.0
+    size = 12311
+	dependencies = none
+    --link = http://www.computercraft.info/forums2/index.php?/topic/27197-bfluac-convert-brainfuck-programs-to-lua/
+end
+
+name = bundel
+    type = raw
+		url = https://raw.githubusercontent.com/Admicos/cc-packman-repo/master/bundel/bundel.lua
+		filename = bundel
+    category = utility bundle
+    version = 1.0.0
+    size = 3419
+	dependencies = none
+    --link = http://www.computercraft.info/forums2/index.php?/topic/26350-bundel-a-program-to-bundle-multiple-files-to-one-self-extracting-program
+end
+
+name = libcfg
+    type = raw
+		url = https://raw.githubusercontent.com/Admicos/cc-packman-repo/master/libCFG/libCFG
+		filename = libCFG
+    category = api config
+    version = 1.0.0
+    size = 652
+    dependencies = none
+    target = /usr/apis
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25456-libcfg-a-basic-configuration-api/
+end
+
+name = bfluac-chat
+	type = raw
+		url = https://raw.githubusercontent.com/Admicos/cc-packman-repo/master/bfluac-chat/bfluac-chat.lua
+		filename = bfluac-chat
+	category = brainfuck computronics-chat
+	version = 1.0.0
+	size = 2011
+	dependencies = admicos/bfluac
+    --link = http://www.computercraft.info/forums2/index.php?/topic/27197-bfluac-convert-brainfuck-programs-to-lua/
+end
+
+name = apaste
+	type = raw
+		url = https://raw.githubusercontent.com/Admicos/cc-packman-repo/master/apaste/apaste.lua
+		filename = apaste
+	category = pastebin hosting
+	version = 1.0.0
+	size = 13376
+	dependencies = none
+	--link = http://46.101.102.147:5000/
+end
+
+name = getopt
+	type = raw
+		url = https://raw.githubusercontent.com/Admicos/cc-packman-repo/master/getopt/getopt.lua
+		filename = getopt
+	category = api args
+	version = 1.0.1
+	size = 1850
+	dependencies = none
+    target = /usr/apis
+	--link = http://www.computercraft.info/forums2/index.php?/topic/27355-getopt-easy-option-parsing/
+end
+
+name = pachax
+    type = raw
+        url = https://raw.githubusercontent.com/Admicos/cc-packman-repo/master/pachax/pachax.lua
+        filename = pachax
+    category = utility
+    version = 1.0.1
+    size = 18860
+    dependencies = admicos/getopt
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
+
+name = admios-apis
+    type = meta
+    category = os
+    setup = /usr/bin/pachax -d admicos/admios-apis
+    version = 2.0.0
+    size = 18860
+    dependencies = admicos/pachax
+    target = /
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
+
+name = admios-desktop
+    type = meta
+    category = os
+    setup = /usr/bin/pachax -d admicos/admios-desktop
+    version = 2.1.0
+    size = 18860
+    dependencies = admicos/pachax
+    target = /
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
+
+name = admios-fsprotect
+    type = meta
+    category = os
+    setup = /usr/bin/pachax -d admicos/admios-fsprotect
+    version = 2.1.0
+    size = 18860
+    dependencies = admicos/pachax admicos/admios-login
+    target = /
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
+
+name = admios-homeskel
+    type = meta
+    category = os
+    setup = /usr/bin/pachax -d admicos/admios-homeskel
+    version = 2.0.0
+    size = 18860
+    dependencies = admicos/pachax
+    target = /
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
+
+name = admios-init
+    type = meta
+    category = os
+    setup = /usr/bin/pachax -d admicos/admios-init
+    version = 2.1.0
+    size = 18860
+    dependencies = admicos/pachax admicos/admios-fsprotect
+    target = /
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
+
+name = admios-login
+    type = meta
+    category = os
+    setup = /usr/bin/pachax -d admicos/admios-login
+    version = 2.0.0
+    size = 18860
+    dependencies = admicos/pachax
+    target = /
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
+
+name = admios
+    type = meta
+    category = os
+    setup = /usr/bin/pachax -d admicos/admios
+    version = 2.0.0
+    size = 18860
+    dependencies = admicos/pachax admicos/admios-ash admicos/admios-apis admicos/admios-homeskel admicos/admios-init admicos/admios-login admicos/admios-fsprotect
+    target = /
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
+
+name = admios-ash
+	type = raw
+		url = https://raw.githubusercontent.com/Admicos/AdmiOS/master/usr/bin/ash
+		filename = ash
+	category = shell admios
+	version = 1.1.0
+	size = 2011
+	dependencies = admicos/getopt admicos/admios-login admicos/admios-apis
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
+
+name = admios-full
+    type = github
+        author = admicos
+        repository = AdmiOS
+        branch = master
+	category = admios os
+    target = /
+	version = 2.1.0
+	size = 2011
+	dependencies = admicos/getopt
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
+
+name = tntta
+    type = pastebin
+        url = 7tbpQp9t
+        file = tntta
+	category = game
+	version = 1.0.0
+	dependencies = none
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
+
+name = tntta-edit
+    type = pastebin
+        url = z6N2ivxm
+        file = tntta-edit
+	category = game
+	version = 1.0.0
+	dependencies = none
+    --link = http://www.computercraft.info/forums2/index.php?/topic/25411-admios-rw/
+end
